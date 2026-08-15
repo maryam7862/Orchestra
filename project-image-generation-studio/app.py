@@ -1,52 +1,61 @@
 ```python
 """
-app.py
-======
-Multimodal Image Generation Studio — Flask entry point.
+Multimodal Image Generation Studio
+Flask application entry point.
 
-Routes:
-  GET  /                        -> main UI
-  POST /api/generate            -> run the full pipeline for a new image
-  POST /api/regenerate          -> re-run generation with the same payload
-  GET  /api/history             -> recent generation history
-  GET  /api/assets/<filename>   -> serve a generated image
-  GET  /api/download/<filename> -> force-download a generated image
-  POST /api/export/<kind>       -> Unreal / Blender / Polycam export packages
-  GET  /api/health              -> safe health check
+Vercel entry point:
+    app
+
+Local development:
+    python app.py
 """
 
 from pathlib import Path
 
-from flask import Flask, jsonify, request, send_from_directory, render_template, abort
+from flask import (
+    Flask,
+    jsonify,
+    request,
+    send_from_directory,
+    render_template,
+    abort,
+)
 
 
-# ---------------------------------------------------------------------------
-# Flask application
-# ---------------------------------------------------------------------------
+# ============================================================
+# FLASK APPLICATION
+# ============================================================
 # IMPORTANT:
 # Keep this as a simple top-level Flask instance.
-# Vercel uses this to detect the Flask application.
+# Vercel detects this variable as the WSGI application.
+
 app = Flask(__name__)
 
 app.config["MAX_CONTENT_LENGTH"] = 1 * 1024 * 1024
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+# ============================================================
+# HELPERS
+# ============================================================
 
 def get_logger():
-    """Load the project's logger, with a safe fallback."""
+    """Load project logger with a safe fallback."""
     try:
-        from utils.logging_utils import get_logger as project_get_logger
-        return project_get_logger()
+        from utils.logging_utils import get_logger as project_logger
+        return project_logger()
     except Exception:
         import logging
         return logging.getLogger("image-generation-studio")
 
 
-def error_response(code: str, message: str, http_status: int = 400):
-    """Return a consistent JSON error response."""
+def get_config():
+    """Load project configuration."""
+    import config
+    return config
+
+
+def error_response(code, message, http_status=400):
+    """Return a standard JSON error response."""
     return (
         jsonify(
             {
@@ -62,7 +71,7 @@ def error_response(code: str, message: str, http_status: int = 400):
 
 
 def events_to_dicts(events):
-    """Convert pipeline events to JSON-compatible dictionaries."""
+    """Convert pipeline events into JSON-safe dictionaries."""
     if not events:
         return []
 
@@ -76,19 +85,13 @@ def events_to_dicts(events):
     ]
 
 
-def get_config():
-    """Import project configuration when it is needed."""
-    import config
-    return config
-
-
-# ---------------------------------------------------------------------------
-# Main UI
-# ---------------------------------------------------------------------------
+# ============================================================
+# MAIN PAGE
+# ============================================================
 
 @app.route("/")
 def index():
-    """Render the main application interface."""
+    """Render the main application."""
     try:
         config = get_config()
 
@@ -125,7 +128,7 @@ def index():
 
     except Exception:
         logger = get_logger()
-        logger.exception("Failed to load the main page")
+        logger.exception("Failed to load main page")
 
         return error_response(
             "APP_STARTUP_ERROR",
@@ -134,15 +137,16 @@ def index():
         )
 
 
-# ---------------------------------------------------------------------------
-# Image generation
-# ---------------------------------------------------------------------------
+# ============================================================
+# IMAGE GENERATION
+# ============================================================
 
 def _run_pipeline_from_request():
-    """Read the request and execute the image-generation pipeline."""
+    """Run the image-generation pipeline."""
 
     data = request.get_json(silent=True) or {}
 
+    # Import only when this endpoint is requested.
     from services import pipeline
 
     result = pipeline.run_generation(
@@ -171,10 +175,10 @@ def _run_pipeline_from_request():
             200,
         )
 
-    image_filename = None
+    filename = None
 
-    if result.image_path:
-        image_filename = Path(result.image_path).name
+    if getattr(result, "image_path", None):
+        filename = Path(result.image_path).name
 
     return jsonify(
         {
@@ -183,7 +187,7 @@ def _run_pipeline_from_request():
             "events": events_to_dicts(result.events),
             "payload": result.payload,
             "image_url": result.image_url,
-            "filename": image_filename,
+            "filename": filename,
             "integrity": result.integrity_info,
             "qa": result.qa_info,
             "attempts_used": result.attempts_used,
@@ -204,14 +208,14 @@ def api_generate():
 
         return error_response(
             "INTERNAL_ERROR",
-            "An unexpected error occurred. Check server logs.",
+            "Image generation failed. Check server logs.",
             500,
         )
 
 
 @app.route("/api/regenerate", methods=["POST"])
 def api_regenerate():
-    """Regenerate an image using the same request structure."""
+    """Regenerate an image."""
     logger = get_logger()
 
     try:
@@ -222,14 +226,14 @@ def api_regenerate():
 
         return error_response(
             "INTERNAL_ERROR",
-            "An unexpected error occurred. Check server logs.",
+            "Image regeneration failed. Check server logs.",
             500,
         )
 
 
-# ---------------------------------------------------------------------------
-# History
-# ---------------------------------------------------------------------------
+# ============================================================
+# HISTORY
+# ============================================================
 
 @app.route("/api/history")
 def api_history():
@@ -254,7 +258,7 @@ def api_history():
 
     except Exception:
         logger = get_logger()
-        logger.exception("Failed to load generation history")
+        logger.exception("Failed to load history")
 
         return error_response(
             "HISTORY_ERROR",
@@ -263,9 +267,9 @@ def api_history():
         )
 
 
-# ---------------------------------------------------------------------------
-# Generated assets
-# ---------------------------------------------------------------------------
+# ============================================================
+# ASSETS
+# ============================================================
 
 def _resolve_asset(filename):
     """Safely resolve a generated asset path."""
@@ -290,7 +294,7 @@ def api_assets(filename):
 
     except Exception:
         logger = get_logger()
-        logger.exception("Could not resolve generated asset")
+        logger.exception("Could not resolve asset")
         abort(500)
 
     if not path.exists() or not path.is_file():
@@ -306,7 +310,7 @@ def api_assets(filename):
 
 @app.route("/api/download/<path:filename>")
 def api_download(filename):
-    """Force-download a generated image."""
+    """Download a generated image."""
     try:
         path = _resolve_asset(filename)
 
@@ -315,7 +319,7 @@ def api_download(filename):
 
     except Exception:
         logger = get_logger()
-        logger.exception("Could not resolve download asset")
+        logger.exception("Could not resolve download")
         abort(500)
 
     if not path.exists() or not path.is_file():
@@ -330,13 +334,14 @@ def api_download(filename):
     )
 
 
-# ---------------------------------------------------------------------------
-# Export
-# ---------------------------------------------------------------------------
+# ============================================================
+# EXPORTS
+# ============================================================
 
 @app.route("/api/export/<kind>", methods=["POST"])
 def api_export(kind):
-    """Export a generated image for Unreal, Blender, or Polycam."""
+    """Export generated assets."""
+
     try:
         data = request.get_json(silent=True) or {}
 
@@ -361,7 +366,7 @@ def api_export(kind):
         if not image_path.exists() or not image_path.is_file():
             return error_response(
                 "NOT_FOUND",
-                "Asset not found. Only verified, QA-accepted assets can be exported.",
+                "Asset not found.",
                 404,
             )
 
@@ -412,13 +417,14 @@ def api_export(kind):
         )
 
 
-# ---------------------------------------------------------------------------
-# Health check
-# ---------------------------------------------------------------------------
+# ============================================================
+# HEALTH CHECK
+# ============================================================
 
 @app.route("/api/health")
 def api_health():
-    """Safe application health check."""
+    """Safe health-check endpoint."""
+
     try:
         config = get_config()
 
@@ -451,11 +457,11 @@ def api_health():
         ), 500
 
 
-# ---------------------------------------------------------------------------
-# Local development
-# ---------------------------------------------------------------------------
-# This section is NOT executed when Vercel imports app.py.
-# It only runs when you execute:
+# ============================================================
+# LOCAL DEVELOPMENT
+# ============================================================
+# Vercel imports the top-level "app" variable above.
+# This block only runs when you execute:
 #
 #     python app.py
 #
