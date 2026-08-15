@@ -4,53 +4,48 @@ app.py
 ======
 Multimodal Image Generation Studio — Flask entry point.
 
-Vercel-compatible Flask application.
-
 Routes:
   GET  /                        -> main UI
-  POST /api/generate            -> run the image generation pipeline
-  POST /api/regenerate          -> regenerate an image
+  POST /api/generate            -> run the full pipeline for a new image
+  POST /api/regenerate          -> re-run generation with the same payload
   GET  /api/history             -> recent generation history
   GET  /api/assets/<filename>   -> serve a generated image
-  GET  /api/download/<filename> -> download a generated image
-  POST /api/export/<kind>       -> Unreal / Blender / Polycam export
-  GET  /api/health              -> health check
+  GET  /api/download/<filename> -> force-download a generated image
+  POST /api/export/<kind>       -> Unreal / Blender / Polycam export packages
+  GET  /api/health              -> safe health check
 """
 
 from pathlib import Path
 
-from flask import (
-    Flask,
-    jsonify,
-    request,
-    send_from_directory,
-    render_template,
-    abort,
-)
+from flask import Flask, jsonify, request, send_from_directory, render_template, abort
 
-# ---------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
 # Flask application
-# ---------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# IMPORTANT:
+# Keep this as a simple top-level Flask instance.
+# Vercel uses this to detect the Flask application.
+app = Flask(__name__)
 
-app = Flask(
-    __name__,
-    template_folder="templates",
-    static_folder="static",
-)
-
-# Keep JSON requests reasonably small.
 app.config["MAX_CONTENT_LENGTH"] = 1 * 1024 * 1024
 
 
-# ---------------------------------------------------------------------
-# Safe helpers
-# ---------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
-def error_response(
-    code: str,
-    message: str,
-    http_status: int = 400,
-):
+def get_logger():
+    """Load the project's logger, with a safe fallback."""
+    try:
+        from utils.logging_utils import get_logger as project_get_logger
+        return project_get_logger()
+    except Exception:
+        import logging
+        return logging.getLogger("image-generation-studio")
+
+
+def error_response(code: str, message: str, http_status: int = 400):
     """Return a consistent JSON error response."""
     return (
         jsonify(
@@ -66,33 +61,8 @@ def error_response(
     )
 
 
-def get_config():
-    """
-    Import config only when needed.
-
-    Lazy importing helps prevent the entire Flask application from
-    failing during serverless startup if a project-specific dependency
-    or configuration has an issue.
-    """
-    import config
-
-    return config
-
-
-def get_logger():
-    """Load the project logger safely."""
-    try:
-        from utils.logging_utils import get_logger as project_logger
-
-        return project_logger()
-    except Exception:
-        import logging
-
-        return logging.getLogger("image-generation-studio")
-
-
 def events_to_dicts(events):
-    """Convert pipeline event objects into JSON-compatible dictionaries."""
+    """Convert pipeline events to JSON-compatible dictionaries."""
     if not events:
         return []
 
@@ -106,9 +76,15 @@ def events_to_dicts(events):
     ]
 
 
-# ---------------------------------------------------------------------
-# Home page
-# ---------------------------------------------------------------------
+def get_config():
+    """Import project configuration when it is needed."""
+    import config
+    return config
+
+
+# ---------------------------------------------------------------------------
+# Main UI
+# ---------------------------------------------------------------------------
 
 @app.route("/")
 def index():
@@ -158,16 +134,15 @@ def index():
         )
 
 
-# ---------------------------------------------------------------------
-# Generation pipeline
-# ---------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Image generation
+# ---------------------------------------------------------------------------
 
 def _run_pipeline_from_request():
-    """Read the request and run the image generation pipeline."""
+    """Read the request and execute the image-generation pipeline."""
 
     data = request.get_json(silent=True) or {}
 
-    # Import only when the endpoint is actually called.
     from services import pipeline
 
     result = pipeline.run_generation(
@@ -196,6 +171,11 @@ def _run_pipeline_from_request():
             200,
         )
 
+    image_filename = None
+
+    if result.image_path:
+        image_filename = Path(result.image_path).name
+
     return jsonify(
         {
             "success": True,
@@ -203,11 +183,7 @@ def _run_pipeline_from_request():
             "events": events_to_dicts(result.events),
             "payload": result.payload,
             "image_url": result.image_url,
-            "filename": (
-                Path(result.image_path).name
-                if result.image_path
-                else None
-            ),
+            "filename": image_filename,
             "integrity": result.integrity_info,
             "qa": result.qa_info,
             "attempts_used": result.attempts_used,
@@ -228,7 +204,7 @@ def api_generate():
 
         return error_response(
             "INTERNAL_ERROR",
-            "Image generation failed. Check the server logs.",
+            "An unexpected error occurred. Check server logs.",
             500,
         )
 
@@ -246,14 +222,14 @@ def api_regenerate():
 
         return error_response(
             "INTERNAL_ERROR",
-            "Image regeneration failed. Check the server logs.",
+            "An unexpected error occurred. Check server logs.",
             500,
         )
 
 
-# ---------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 # History
-# ---------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 
 @app.route("/api/history")
 def api_history():
@@ -267,7 +243,6 @@ def api_history():
             type=int,
         )
 
-        # Keep the value bounded.
         limit = max(1, min(limit, 100))
 
         return jsonify(
@@ -288,12 +263,12 @@ def api_history():
         )
 
 
-# ---------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 # Generated assets
-# ---------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 
-def _get_asset_path(filename):
-    """Resolve a generated asset safely."""
+def _resolve_asset(filename):
+    """Safely resolve a generated asset path."""
     config = get_config()
 
     from utils.file_utils import resolve_within
@@ -308,7 +283,7 @@ def _get_asset_path(filename):
 def api_assets(filename):
     """Serve a generated image."""
     try:
-        path = _get_asset_path(filename)
+        path = _resolve_asset(filename)
 
     except ValueError:
         abort(400)
@@ -333,7 +308,7 @@ def api_assets(filename):
 def api_download(filename):
     """Force-download a generated image."""
     try:
-        path = _get_asset_path(filename)
+        path = _resolve_asset(filename)
 
     except ValueError:
         abort(400)
@@ -355,16 +330,14 @@ def api_download(filename):
     )
 
 
-# ---------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 # Export
-# ---------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 
 @app.route("/api/export/<kind>", methods=["POST"])
 def api_export(kind):
-    """Export a verified generated image."""
+    """Export a generated image for Unreal, Blender, or Polycam."""
     try:
-        config = get_config()
-
         data = request.get_json(silent=True) or {}
 
         filename = data.get("filename")
@@ -377,7 +350,7 @@ def api_export(kind):
             )
 
         try:
-            image_path = _get_asset_path(filename)
+            image_path = _resolve_asset(filename)
 
         except ValueError:
             return error_response(
@@ -392,20 +365,16 @@ def api_export(kind):
                 404,
             )
 
-        # Import exporters only when required.
         if kind == "unreal":
             from integrations import unreal
-
             exporter = unreal.export_for_unreal
 
         elif kind == "blender":
             from integrations import blender
-
             exporter = blender.export_for_blender
 
         elif kind == "polycam":
             from integrations import polycam
-
             exporter = polycam.export_for_polycam
 
         else:
@@ -443,17 +412,13 @@ def api_export(kind):
         )
 
 
-# ---------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 # Health check
-# ---------------------------------------------------------------------
+# ---------------------------------------------------------------------------
 
 @app.route("/api/health")
 def api_health():
-    """
-    Safe health check.
-
-    Does not expose the actual Hugging Face token.
-    """
+    """Safe application health check."""
     try:
         config = get_config()
 
@@ -472,31 +437,28 @@ def api_health():
             }
         )
 
-    except Exception as exc:
+    except Exception:
         logger = get_logger()
-        logger.exception("Health check configuration error")
+        logger.exception("Health check failed")
 
         return jsonify(
             {
-                "status": "degraded",
+                "status": "error",
                 "service": "multimodal-image-generation-studio",
                 "hf_token_configured": False,
-                "error": str(exc),
+                "model": None,
             }
         ), 500
 
 
-# ---------------------------------------------------------------------
-# Vercel / local execution
-# ---------------------------------------------------------------------
-
-# Vercel imports the variable named "app" above.
-#
-# This block is ONLY executed when running the file directly:
+# ---------------------------------------------------------------------------
+# Local development
+# ---------------------------------------------------------------------------
+# This section is NOT executed when Vercel imports app.py.
+# It only runs when you execute:
 #
 #     python app.py
 #
-# It will NOT execute when Vercel imports the Flask application.
 
 if __name__ == "__main__":
     app.run(
@@ -506,4 +468,5 @@ if __name__ == "__main__":
         use_reloader=False,
     )
 ```
+
 
