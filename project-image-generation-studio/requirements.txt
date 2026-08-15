@@ -1,0 +1,22 @@
+# Core web app
+Flask==3.0.3
+python-dotenv==1.0.1
+
+# Hugging Face image generation
+# Use a current SDK; older releases have deprecated model/provider behavior
+# and can fail on the free-tier inference routes used by this app.
+huggingface_hub>=1.10.0
+
+# HTTP client used by the network gateway (streaming downloads, timeouts)
+requests==2.32.3
+
+# Image handling / integrity verification (Image.open + Image.load)
+Pillow==10.4.0
+
+# --- Optional: only needed if you set ENABLE_CLIP_QA=true in .env ---
+# These are heavy (torch alone is several hundred MB) and download a
+# ~600MB CLIP model on first run. Leave commented out unless you want
+# the CLIP-based aesthetic/semantic QA path instead of the default
+# lightweight local heuristic.
+# torch==2.4.1
+# transformers==4.44.2

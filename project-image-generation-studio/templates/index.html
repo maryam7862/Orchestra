@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Orchestra — Multimodal Image Generation Studio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+
+<body>
+
+  <div class="bg-field" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 32 32" width="22" height="22">
+          <circle cx="16" cy="16" r="14" fill="none" stroke="currentColor" stroke-width="2" />
+          <circle cx="16" cy="16" r="4" fill="currentColor" />
+          <path d="M16 2 L16 8 M16 24 L16 30 M2 16 L8 16 M24 16 L30 16" stroke="currentColor" stroke-width="2" />
+        </svg>
+      </span>
+      <span class="brand-name">Orchestra</span>
+      <span class="brand-tag">Multimodal Image Generation Studio</span>
+    </div>
+    <nav class="topnav">
+      <button class="nav-btn active" data-panel="studio">Studio</button>
+      <button class="nav-btn" data-panel="history">History</button>
+    </nav>
+  </header>
+
+  <main class="layout">
+
+    <!-- ============================= STUDIO PANEL ============================= -->
+    <section class="panel studio-panel" id="panel-studio">
+
+      <form id="generate-form" class="control-column">
+
+        <div class="field">
+          <div class="field-head">
+            <label for="prompt">Prompt</label>
+            <span class="char-count" id="prompt-count">0 / {{ max_prompt_chars }}</span>
+          </div>
+          <textarea id="prompt" name="prompt" rows="4" maxlength="{{ max_prompt_chars }}"
+            placeholder="Describe the image you want to orchestrate into being&hellip;"></textarea>
+        </div>
+
+        <div class="field">
+          <div class="field-head">
+            <label for="negative_prompt">Negative prompt <span class="optional">optional</span></label>
+            <span class="char-count" id="negative-count">0 / {{ max_negative_chars }}</span>
+          </div>
+          <textarea id="negative_prompt" name="negative_prompt" rows="2" maxlength="{{ max_negative_chars }}"
+            placeholder="Things to exclude from the result&hellip;"></textarea>
+        </div>
+
+        <div class="field">
+          <div class="field-head"><label>Aspect ratio</label></div>
+          <div class="ratio-cards" id="ratio-cards">
+            {% for key, info in aspect_ratios.items() %}
+            <button type="button" class="ratio-card {% if loop.first %}selected{% endif %}" data-ratio="{{ key }}"
+              data-width="{{ info.width }}" data-height="{{ info.height }}">
+              <span class="ratio-frame ratio-frame-{{ key|replace(':','x') }}"></span>
+              <span class="ratio-name">{{ key }}</span>
+              <span class="ratio-label">{{ info.label }}</span>
+            </button>
+            {% endfor %}
+          </div>
+          <div class="ratio-details" id="ratio-details"></div>
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <div class="field-head"><label for="num_images">Number of images</label></div>
+            <select id="num_images" name="num_images">
+              {% for n in range(1, max_images + 1) %}
+              <option value="{{ n }}">{{ n }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="field">
+            <div class="field-head"><label for="style_preset">Style preset</label></div>
+            <select id="style_preset" name="style_preset">
+              {% for preset in style_presets %}
+              <option value="{{ preset }}">{{ preset|capitalize }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+
+        <button type="submit" class="btn-primary" id="generate-btn">
+          <span class="btn-label">Generate</span>
+          <span class="btn-spinner" hidden></span>
+        </button>
+
+        <button type="button" class="btn-ghost" id="inspector-toggle">Payload Inspector</button>
+        <pre class="payload-inspector" id="payload-inspector" hidden></pre>
+      </form>
+
+      <div class="result-column">
+
+        <!-- Pipeline monitor: signature element -->
+        <div class="pipeline-monitor" id="pipeline-monitor">
+          <div class="pipeline-track" aria-hidden="true"></div>
+          <ol class="pipeline-stages">
+            <li class="stage" data-stage="payload"><span class="stage-dot"></span><span
+                class="stage-name">Payload</span><span class="stage-status">Waiting</span></li>
+            <li class="stage" data-stage="network"><span class="stage-dot"></span><span
+                class="stage-name">Network</span><span class="stage-status">Waiting</span></li>
+            <li class="stage" data-stage="security"><span class="stage-dot"></span><span
+                class="stage-name">Security</span><span class="stage-status">Waiting</span></li>
+            <li class="stage" data-stage="transport"><span class="stage-dot"></span><span
+                class="stage-name">Transport</span><span class="stage-status">Waiting</span></li>
+            <li class="stage" data-stage="integrity"><span class="stage-dot"></span><span
+                class="stage-name">Integrity</span><span class="stage-status">Waiting</span></li>
+            <li class="stage" data-stage="qa"><span class="stage-dot"></span><span class="stage-name">Automated
+                QA</span><span class="stage-status">Waiting</span></li>
+          </ol>
+        </div>
+
+        <!-- Result / states -->
+        <div class="result-stage" id="result-stage">
+          <div class="image-result" id="image-result">
+            <div class="image-frame" id="image-frame">
+              <div class="skeleton-state" id="skeleton-state" hidden>
+                <div class="skeleton-image"></div>
+              </div>
+
+              <img id="result-image" alt="Generated image" hidden />
+            </div>
+
+            <div class="image-actions" id="image-actions" hidden>
+              <button class="icon-btn" id="btn-preview" title="Fullscreen preview">⤢</button>
+              <button class="icon-btn" id="btn-download" title="Download">⬇</button>
+              <button class="icon-btn" id="btn-regenerate" title="Regenerate">↻</button>
+            </div>
+
+            <div class="result-meta" id="result-meta" hidden>
+              <div class="meta-row"><span>Prompt</span><span id="meta-prompt"></span></div>
+              <div class="meta-row"><span>Resolution</span><span id="meta-resolution"></span></div>
+              <div class="meta-row"><span>File size</span><span id="meta-filesize"></span></div>
+              <div class="meta-row"><span>Aesthetic score</span><span id="meta-aesthetic"></span></div>
+              <div class="meta-row"><span>Semantic score</span><span id="meta-semantic"></span></div>
+            </div>
+          </div>
+
+          <details class="technical-details" id="technical-details" hidden>
+            <summary>Technical Details</summary>
+            <div class="tech-grid" id="tech-grid"></div>
+          </details>
+
+          <div class="export-hub" id="export-hub" hidden>
+            <div class="export-hub-title">Export &amp; Integrations</div>
+            <div class="export-cards">
+              <button class="export-card" data-kind="unreal">
+                <strong>Unreal Engine 5</strong>
+                <span>Texture handoff package with Nanite/LOD import notes.</span>
+              </button>
+              <button class="export-card" data-kind="blender">
+                <strong>Blender</strong>
+                <span>Image + runnable Python script that builds a material.</span>
+              </button>
+              <button class="export-card" data-kind="polycam">
+                <strong>Polycam</strong>
+                <span>Manual handoff package for scan-fusion workflows.</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="error-state" id="error-state" hidden>
+            <div class="error-code" id="error-code"></div>
+            <div class="error-message" id="error-message"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================= HISTORY PANEL ============================= -->
+    <section class="panel history-panel" id="panel-history" hidden>
+      <h2>Generation History</h2>
+      <div class="history-grid" id="history-grid"></div>
+    </section>
+
+  </main>
+
+  <!-- Fullscreen preview modal -->
+  <div class="modal" id="preview-modal" hidden>
+    <button class="modal-close" id="modal-close">&times;</button>
+    <img id="modal-image" alt="Fullscreen preview" />
+  </div>
+
+  <div class="toast-stack" id="toast-stack"></div>
+
+  <script>
+    window.STUDIO_CONFIG = {
+      aspectRatios: {{ aspect_ratios | tojson }},
+  };
+  </script>
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+
+</html>
