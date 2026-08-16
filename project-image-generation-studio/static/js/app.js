@@ -127,27 +127,43 @@ async function replayEvents(events) {
 
 /* ---------------- result states ---------------- */
 function showState(name) {
+  const showResultLayout = ['image', 'skeleton', 'error'].includes(name);
   const isImage = name === 'image';
-  els.emptyState.hidden = name !== 'empty';
-  els.skeletonState.hidden = name !== 'skeleton';
-  els.errorState.hidden = name !== 'error';
-  els.imageResult.hidden = !isImage;
-  els.imageActions.hidden = !isImage;
-  els.resultMeta.hidden = !isImage;
-  els.technicalDetails.hidden = !isImage;
-  els.exportHub.hidden = !isImage;
-  els.resultImage.hidden = !isImage;
+  const isError = name === 'error';
+
+  if (els.emptyState) els.emptyState.hidden = name !== 'empty';
+  if (els.skeletonState) els.skeletonState.hidden = name !== 'skeleton';
+  if (els.errorState) els.errorState.hidden = !isError;
+  if (els.imageResult) els.imageResult.hidden = name === 'empty';
+  if (els.imageActions) els.imageActions.hidden = !isImage;
+  if (els.resultMeta) els.resultMeta.hidden = !showResultLayout;
+  if (els.technicalDetails) els.technicalDetails.hidden = name === 'empty';
+  if (els.exportHub) els.exportHub.hidden = name === 'empty';
+  if (els.resultImage) els.resultImage.hidden = !isImage;
+
+  if (name === 'empty' && els.technicalDetails) {
+    els.technicalDetails.removeAttribute('open');
+  }
 }
 
 function renderError(code, message) {
   els.errorCode.textContent = code || 'ERROR';
   els.errorMessage.textContent = message || 'Something went wrong.';
-  showState('error');
+  els.errorState.hidden = false;
+  els.technicalDetails.hidden = false;
+  els.technicalDetails.open = true;
+  els.exportHub.hidden = false;
+  els.resultMeta.hidden = false;
+  els.imageResult.hidden = false;
+  els.imageActions.hidden = true;
+  els.resultImage.hidden = true;
+  els.skeletonState.hidden = false;
 }
 
 function renderResult(data) {
   lastResult = data;
   els.resultImage.src = data.image_url;
+  els.technicalDetails.open = true;
   els.metaPrompt.textContent = data.payload.prompt;
   els.metaResolution.textContent = `${data.integrity.width} × ${data.integrity.height}`;
   els.metaFilesize.textContent = `${(data.integrity.byte_size / 1024).toFixed(1)} KB`;
@@ -309,4 +325,3 @@ async function loadHistory() {
     els.historyGrid.innerHTML = '<p class="history-empty">Could not load history.</p>';
   }
 }
-
