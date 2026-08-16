@@ -29,7 +29,11 @@ const els = {
   errorCode: document.getElementById('error-code'),
   errorMessage: document.getElementById('error-message'),
   imageResult: document.getElementById('image-result'),
+  imageActions: document.getElementById('image-actions'),
+  resultMeta: document.getElementById('result-meta'),
   resultImage: document.getElementById('result-image'),
+  technicalDetails: document.getElementById('technical-details'),
+  exportHub: document.getElementById('export-hub'),
   metaPrompt: document.getElementById('meta-prompt'),
   metaResolution: document.getElementById('meta-resolution'),
   metaFilesize: document.getElementById('meta-filesize'),
@@ -123,10 +127,16 @@ async function replayEvents(events) {
 
 /* ---------------- result states ---------------- */
 function showState(name) {
+  const isImage = name === 'image';
   els.emptyState.hidden = name !== 'empty';
   els.skeletonState.hidden = name !== 'skeleton';
   els.errorState.hidden = name !== 'error';
-  els.imageResult.hidden = name !== 'image';
+  els.imageResult.hidden = !isImage;
+  els.imageActions.hidden = !isImage;
+  els.resultMeta.hidden = !isImage;
+  els.technicalDetails.hidden = !isImage;
+  els.exportHub.hidden = !isImage;
+  els.resultImage.hidden = !isImage;
 }
 
 function renderError(code, message) {
@@ -299,3 +309,4 @@ async function loadHistory() {
     els.historyGrid.innerHTML = '<p class="history-empty">Could not load history.</p>';
   }
 }
+
