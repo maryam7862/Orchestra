@@ -497,3 +497,5 @@ put it in HTML, CSS, JavaScript, or push `.env` to GitHub.
 13. Test download: click the download icon on a successful result
 14. Test errors: temporarily clear `HF_TOKEN` from `.env`, restart the app, and confirm you get a clear `MISSING_HF_TOKEN` message instead of a crash
 15. Test history: switch to the History tab after a few successful generations
+
+You can visit the site https://orchestra-qrz388cge-maryam-saleem-s-projects.vercel.app/ here
