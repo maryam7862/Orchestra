@@ -33,6 +33,10 @@ app = Flask(__name__)
 
 app.config["MAX_CONTENT_LENGTH"] = 1 * 1024 * 1024
 
+# Ensure required directories exist (important for Vercel's ephemeral filesystem)
+for directory in ["logs", "generated_assets"]:
+    Path(directory).mkdir(parents=True, exist_ok=True)
+
 
 # ============================================================
 # HELPERS
@@ -83,6 +87,21 @@ def events_to_dicts(events):
         }
         for event in events
     ]
+
+
+# ============================================================
+# HEALTH CHECK
+# ============================================================
+
+@app.route("/api/health")
+def health_check():
+    """Simple health check endpoint."""
+    import os
+    return jsonify({
+        "status": "ok",
+        "hf_token": bool(os.environ.get("HF_TOKEN")),
+        "hf_model": os.environ.get("HF_MODEL", "NOT SET")
+    })
 
 
 # ============================================================
@@ -474,5 +493,6 @@ if __name__ == "__main__":
         use_reloader=False,
     )
 ```
+
 
 
