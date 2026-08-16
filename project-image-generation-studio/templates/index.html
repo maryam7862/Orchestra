@@ -125,6 +125,15 @@
 
         <!-- Result / states -->
         <div class="result-stage" id="result-stage">
+          <div class="empty-state" id="empty-state">
+            <svg width="72" height="72" viewBox="0 0 72 72" aria-hidden="true">
+              <circle cx="36" cy="36" r="26" fill="none" stroke="currentColor" stroke-width="2" opacity="0.35" />
+              <path d="M23 41 L32 50 L50 29" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"
+                stroke-linejoin="round" />
+            </svg>
+            <p>Describe a scene and click Generate to create a new image.</p>
+          </div>
+
           <div class="image-result" id="image-result">
             <div class="image-frame" id="image-frame">
               <div class="skeleton-state" id="skeleton-state" hidden>
@@ -149,12 +158,12 @@
             </div>
           </div>
 
-          <details class="technical-details" id="technical-details" hidden>
+          <details class="technical-details" id="technical-details" open>
             <summary>Technical Details</summary>
             <div class="tech-grid" id="tech-grid"></div>
           </details>
 
-          <div class="export-hub" id="export-hub" hidden>
+          <div class="export-hub" id="export-hub">
             <div class="export-hub-title">Export &amp; Integrations</div>
             <div class="export-cards">
               <button class="export-card" data-kind="unreal">
