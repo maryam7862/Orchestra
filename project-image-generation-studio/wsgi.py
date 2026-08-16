@@ -1,27 +1,31 @@
 """
 WSGI entry point for Vercel.
 
-This file exists to ensure the Flask app can be imported without
-dependency errors. Vercel will use this to find the 'app' instance.
+Vercel looks for a top-level 'app' variable to use as the WSGI application.
 """
 
+from flask import Flask, jsonify
+
+# Create the Flask app instance at module level for Vercel to find
+app = Flask(__name__)
+
+# Try to import and use the actual app from app.py
 try:
-    from app import app
-except ImportError as e:
+    from app import app as actual_app
+    # Replace our placeholder with the real one
+    app = actual_app
+except Exception as e:
     import logging
-    logging.error(f"Failed to import Flask app: {e}")
+    logging.error(f"Failed to import main app: {e}")
     
-    # Fallback: create a minimal app for debugging
-    from flask import Flask, jsonify
-    
-    app = Flask(__name__)
-    
+    # Use minimal fallback app for debugging
     @app.route('/')
     def error():
         return jsonify({
-            "error": "Flask app failed to import",
+            "error": "Failed to load application",
             "details": str(e)
         }), 500
 
 if __name__ == '__main__':
     app.run()
+
