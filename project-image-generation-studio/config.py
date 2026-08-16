@@ -15,6 +15,29 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent
 
 
+def _resolve_writable_dir(relative_name: str) -> Path:
+    """Use the project root when writable, otherwise fall back to /tmp.
+
+    Vercel's filesystem is read-only outside /tmp, so directory creation must
+    never crash during import.
+    """
+    candidates = [
+        BASE_DIR / relative_name,
+        Path("/tmp") / "project-image-generation-studio" / relative_name,
+    ]
+
+    for candidate in candidates:
+        try:
+            candidate.mkdir(parents=True, exist_ok=True)
+            return candidate
+        except OSError:
+            continue
+
+    fallback = Path("/tmp") / "project-image-generation-studio" / relative_name
+    fallback.mkdir(parents=True, exist_ok=True)
+    return fallback
+
+
 def load_env_files(project_root: Path | None = None) -> None:
     """Load environment variables from the usual local files.
 
@@ -155,13 +178,10 @@ ENABLE_CLIP_QA = os.environ.get("ENABLE_CLIP_QA", "false").strip().lower() == "t
 # ---------------------------------------------------------------------------
 # Storage
 # ---------------------------------------------------------------------------
-GENERATED_ASSETS_DIR = BASE_DIR / "generated_assets"
-EXPORTS_DIR = BASE_DIR / "exports"
-LOGS_DIR = BASE_DIR / "logs"
+GENERATED_ASSETS_DIR = _resolve_writable_dir("generated_assets")
+EXPORTS_DIR = _resolve_writable_dir("exports")
+LOGS_DIR = _resolve_writable_dir("logs")
 HISTORY_FILE = GENERATED_ASSETS_DIR / "history.json"
-
-for _d in (GENERATED_ASSETS_DIR, EXPORTS_DIR, LOGS_DIR):
-    _d.mkdir(parents=True, exist_ok=True)
 
 # ---------------------------------------------------------------------------
 # Style presets (slide 19 / conclusion)
