@@ -8,9 +8,29 @@ import sys
 import os
 from pathlib import Path
 
-# Ensure required directories exist before importing anything
-for directory in ["logs", "generated_assets", "templates", "static"]:
-    Path(directory).mkdir(parents=True, exist_ok=True)
+def ensure_writeable_dir(relative_name: str) -> Path:
+    """Create a writable directory, falling back to /tmp on Vercel's read-only FS."""
+    candidates = [
+        Path(relative_name),
+        Path("/tmp") / "project-image-generation-studio" / relative_name,
+    ]
+
+    for candidate in candidates:
+        try:
+            candidate.mkdir(parents=True, exist_ok=True)
+            return candidate
+        except OSError:
+            continue
+
+    fallback = Path("/tmp") / "project-image-generation-studio" / relative_name
+    fallback.mkdir(parents=True, exist_ok=True)
+    return fallback
+
+
+# Ensure required directories exist before importing anything.
+# Only logs/generated_assets need to be writable; templates/static are project files.
+for directory in ["logs", "generated_assets"]:
+    ensure_writeable_dir(directory)
 
 import logging
 import traceback
@@ -75,7 +95,7 @@ except Exception as e:
                 "HF_MODEL": os.environ.get("HF_MODEL", "NOT SET")
             }
         }), 500
-    
+
     @app.route('/api/health')
     def health():
         return jsonify({
