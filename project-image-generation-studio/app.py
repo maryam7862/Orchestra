@@ -1,4 +1,3 @@
-```python
 """
 Multimodal Image Generation Studio
 Flask application entry point.
@@ -34,8 +33,27 @@ app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 1 * 1024 * 1024
 
 # Ensure required directories exist (important for Vercel's ephemeral filesystem)
+def _ensure_writeable_dir(relative_name: str) -> Path:
+    """Create a writable directory, falling back to /tmp when the app root is read-only."""
+    candidates = [
+        Path(relative_name),
+        Path("/tmp") / "project-image-generation-studio" / relative_name,
+    ]
+
+    for candidate in candidates:
+        try:
+            candidate.mkdir(parents=True, exist_ok=True)
+            return candidate
+        except OSError:
+            continue
+
+    fallback = Path("/tmp") / "project-image-generation-studio" / relative_name
+    fallback.mkdir(parents=True, exist_ok=True)
+    return fallback
+
+
 for directory in ["logs", "generated_assets"]:
-    Path(directory).mkdir(parents=True, exist_ok=True)
+    _ensure_writeable_dir(directory)
 
 
 # ============================================================
@@ -492,7 +510,7 @@ if __name__ == "__main__":
         debug=False,
         use_reloader=False,
     )
-```
+
 
 
 
